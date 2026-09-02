@@ -35,11 +35,21 @@
 #    define PLOOPY_SCROLL_BUTTON_DEBOUNCE 100
 #endif
 
-#ifndef PLOOPY_DPI_OPTIONS
-#    define PLOOPY_DPI_OPTIONS \
-        { 600, 900, 1200, 1600, 2400 }
-#    ifndef PLOOPY_DPI_DEFAULT
-#        define PLOOPY_DPI_DEFAULT 1
+#ifndef PLOOPY_DPI_HOLD
+#    ifndef PLOOPY_DPI_OPTIONS
+#        define PLOOPY_DPI_OPTIONS \
+              { 600, 900, 1200, 1600, 2400 }
+#        ifndef PLOOPY_DPI_DEFAULT
+#             define PLOOPY_DPI_DEFAULT 1
+#        endif
+#    endif
+#else
+#    ifndef PLOOPY_DPI_HOLD_OPTIONS
+#        define PLOOPY_DPI_HOLD_OPTIONS \
+             { 600, 1200 }
+#        ifndef PLOOPY_DPI_DEFAULT
+#             define PLOOPY_DPI_DEFAULT 1
+#        endif
 #    endif
 #endif
 #ifndef PLOOPY_DPI_DEFAULT
@@ -65,6 +75,7 @@ uint16_t          dpi_array[] = PLOOPY_DPI_OPTIONS;
 // Trackball State
 bool  is_scroll_clicked    = false;
 bool  is_drag_scroll       = false;
+bool  is_dpi_clicked       = false;
 float scroll_accumulated_h = 0;
 float scroll_accumulated_v = 0;
 
