@@ -35,22 +35,16 @@
 #    define PLOOPY_SCROLL_BUTTON_DEBOUNCE 100
 #endif
 
-#ifndef PLOOPY_DPI_HOLD
-#    ifndef PLOOPY_DPI_OPTIONS
-#        define PLOOPY_DPI_OPTIONS \
-              { 600, 900, 1200, 1600, 2400 }
-#        ifndef PLOOPY_DPI_DEFAULT
-#             define PLOOPY_DPI_DEFAULT 1
-#        endif
+#ifndef PLOOPY_DPI_OPTIONS
+#    define PLOOPY_DPI_OPTIONS \
+         { 600, 900, 1200, 1600, 2400 }
+#    ifndef PLOOPY_DPI_DEFAULT
+#        define PLOOPY_DPI_DEFAULT 1
 #    endif
-#else
-#    ifndef PLOOPY_DPI_HOLD_OPTIONS
-#        define PLOOPY_DPI_HOLD_OPTIONS \
-             { 600, 1200 }
-#        ifndef PLOOPY_DPI_DEFAULT
-#             define PLOOPY_DPI_DEFAULT 1
-#        endif
-#    endif
+#endif
+#ifndef PLOOPY_DPI_HOLD_VALUE
+#    define PLOOPY_DPI_HOLD_VALUE \
+         600
 #endif
 #ifndef PLOOPY_DPI_DEFAULT
 #    define PLOOPY_DPI_DEFAULT 0
@@ -71,13 +65,14 @@
 keyboard_config_t keyboard_config;
 uint16_t          dpi_array[] = PLOOPY_DPI_OPTIONS;
 #define DPI_OPTION_SIZE ARRAY_SIZE(dpi_array)
+uint16_t          dpi_hold    = PLOOPY_DPI_HOLD_VALUE;
 
 // Trackball State
 bool  is_scroll_clicked    = false;
 bool  is_drag_scroll       = false;
-bool  is_dpi_clicked       = false;
 float scroll_accumulated_h = 0;
 float scroll_accumulated_v = 0;
+bool  is_dpi_held          = false;
 
 #ifdef ENCODER_ENABLE
 uint16_t lastScroll        = 0; // Previous confirmed wheel event
@@ -197,6 +192,18 @@ bool process_record_kb(uint16_t keycode, keyrecord_t* record) {
 
     if (keycode == DPI_CONFIG && record->event.pressed) {
         cycle_dpi();
+    }
+
+    if (keycode == DPI_HOLD) {
+        if (record->event.pressed) {
+            if (!is_dpi_held) {
+                is_dpi_held = true;
+                pointing_device_set_cpi(dpi_hold);
+            }
+        } else {
+            is_dpi_held = false;
+            pointing_device_set_cpi(dpi_array[keyboard_config.dpi_config]);
+        }
     }
 
     if (keycode == DRAG_SCROLL) {

@@ -29,10 +29,12 @@ typedef union {
 
 extern keyboard_config_t keyboard_config;
 extern uint16_t          dpi_array[];
+extern uint16_t          dpi_hold;
 
 enum ploopy_keycodes {
     DPI_CONFIG = QK_KB_0,
     DRAG_SCROLL,
+    DPI_HOLD
 };
 
 bool encoder_update_user(uint8_t index, bool clockwise);
