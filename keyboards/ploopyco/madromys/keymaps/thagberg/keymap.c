@@ -15,12 +15,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#define PLOOPY_DRAGSCROLL_MOMENTARY 1
+#define PLOOPY_DRAGSCROLL_DIVISOR_H 24.0
+#define PLOOPY_DRAGSCROLL_DIVISOR_V 24.0
+#define PLOOPY_DRAGSCROLL_INVERT 1
 #include QMK_KEYBOARD_H
-
-#define PLOOPY_DRAGSCROLL_MOMENTARY
-#define PLOOPY_DRAGSCROLL_DIVISOR_H 12.0
-#define PLOOPY_DRAGSCROLL_DIVISOR_V 12.0
-#define PLOOPY_DRAGSCROLL_INVERT
 
 // const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 //     [0] = LAYOUT( MS_BTN4, MS_BTN5, DRAG_SCROLL, MS_BTN2, MS_BTN1, MS_BTN3 )
@@ -35,5 +34,5 @@
 
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     // [0] = LAYOUT( MS_BTN4, MS_BTN5, DRAG_SCROLL, MS_BTN2, MS_BTN1, MS_BTN3 )
-    [0] = LAYOUT( DRAG_SCROLL, DPI_CONFIG, MS_BTN5, MS_BTN2, DPI_HOLD, MS_BTN1 )
+    [0] = LAYOUT( DRAG_SCROLL, MS_BTN4, MS_BTN5, MS_BTN2, DPI_HOLD, MS_BTN1 )
 };

@@ -73,6 +73,8 @@ bool  is_drag_scroll       = false;
 float scroll_accumulated_h = 0;
 float scroll_accumulated_v = 0;
 bool  is_dpi_held          = false;
+float flip_accumulated     = 0;
+bool  is_tab_flip          = false;
 
 #ifdef ENCODER_ENABLE
 uint16_t lastScroll        = 0; // Previous confirmed wheel event
@@ -135,7 +137,7 @@ void encoder_driver_task(void) {
 #endif
 
 void toggle_drag_scroll(void) {
-    is_drag_scroll ^= 1;
+    // is_drag_scroll ^= 1;
 }
 
 void cycle_dpi(void) {
@@ -165,6 +167,8 @@ report_mouse_t pointing_device_task_kb(report_mouse_t mouse_report) {
         // Clear the X and Y values of the mouse report
         mouse_report.x = 0;
         mouse_report.y = 0;
+    } else if (is_tab_flip) {
+        flip_accumulated += (float)mouse_report.x / 12.f;
 
         mouse_report.x = 0;
         mouse_report.y = 0;
@@ -207,13 +211,17 @@ bool process_record_kb(uint16_t keycode, keyrecord_t* record) {
     }
 
     if (keycode == DRAG_SCROLL) {
-#ifdef PLOOPY_DRAGSCROLL_MOMENTARY
+// #ifdef PLOOPY_DRAGSCROLL_MOMENTARY
         is_drag_scroll = record->event.pressed;
-#else
-        if (record->event.pressed) {
-            toggle_drag_scroll();
-        }
-#endif
+// #else
+//         if (record->event.pressed) {
+//             toggle_drag_scroll();
+//         }
+// #endif
+    }
+
+    if (keycode == TAB_FLIP) {
+        is_tab_flip = record->event.pressed;
     }
 
     return true;
