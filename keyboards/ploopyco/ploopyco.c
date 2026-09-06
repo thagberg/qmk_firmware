@@ -64,36 +64,45 @@
 #    define ENCODER_BUTTON_COL 0
 #endif
 
-struct PointerVector {
+struct Vec2 {
    float x;
    float y;
 };
-struct PointerVector previous_pvector = {0.f, 0.f};
-struct PointerVector previous_pnormal_left = {0.f, 0.f};
-struct PointerVector previous_pnormal_right = {0.f, 0.f};
+struct Vec2 previous_pvector = {0.f, 0.f};
+struct Vec2 previous_pnormal_left = {0.f, 0.f};
+struct Vec2 previous_pnormal_right = {0.f, 0.f};
 bool previous_rotation_ccw = true;
-float get_v2_length(float x, float y) {
-    return sqrt(x*x + y*y);
+float v2_length(struct Vec2* v) {
+    return sqrtf(v->x*v->x + v->y*v->y);
 }
-struct PointerVector get_normalized_v2(struct PointerVector* p) {
+struct Vec2 v2_scalar_div(struct Vec2* v, float s) {
+    return (struct Vec2){v->x / s, v->y / s};
+}
+struct Vec2 v2_scalar_mul(struct Vec2* v, float s) {
+    return (struct Vec2){v->x * s, v->y * s};
+}
+struct Vec2 v2_normalize(struct Vec2* p) {
     if (p == NULL) {
-        return (struct PointerVector){0.f, 0.f};
+        return (struct Vec2){0.f, 0.f};
     }
 
-    float l = get_v2_length(p->x, p->y);
-    return (struct PointerVector){p->x / l, p->y / l};
+    float l = v2_length(p);
+    return v2_scalar_div(p, l);
 }
-float get_cos_theta(struct PointerVector* l, struct PointerVector* r) {
-    struct PointerVector nl = get_normalized_v2(l);
-    struct PointerVector nr = get_normalized_v2(r);
+float v2_dot(struct Vec2* l, struct Vec2* r) {
+    return l->x * r-> x + l->y * r->y;
+}
+struct Vec2 v2_add(struct Vec2*l, struct Vec2* r) {
+    return (struct Vec2){l->x + r->x, l->y + r->y};
+}
+struct Vec2 v2_sub(struct Vec2*l, struct Vec2* r) {
+    return (struct Vec2){l->x - r->x, l->y - r->y};
+}
+float v2_cos_theta(struct Vec2* l, struct Vec2* r) {
+    struct Vec2 nl = v2_normalize(l);
+    struct Vec2 nr = v2_normalize(r);
 
-    return nl.x * nr.x + nl.y * nr.y;
-}
-struct PointerVector v2_add(struct PointerVector*l, struct PointerVector* r) {
-    return (struct PointerVector){l->x + r->x, l->y + r->y};
-}
-struct PointerVector v2_sub(struct PointerVector*l, struct PointerVector* r) {
-    return (struct PointerVector){l->x - r->x, l->y - r->y};
+    return v2_dot(&nl, &nr);
 }
 
 keyboard_config_t keyboard_config;
@@ -183,30 +192,30 @@ void cycle_dpi(void) {
 float get_pointer_rotation(int8_t x, int8_t y) {
     float result = 0.f;
 
-    struct PointerVector newP = {(float)x, (float)y};
+    struct Vec2 newP = {(float)x, (float)y};
     newP = v2_add(&newP, &previous_pvector);
     // struct PointerVector newLeft = {-newP.y, newP.x};
     // struct PointerVector newRight = {newP.y, -newP.x};
-    struct PointerVector newLeft = {-y, x};
+    struct Vec2 newLeft = {-y, x};
     newLeft = v2_add(&newP, &newLeft);
-    struct PointerVector newRight = {y, -x};
+    struct Vec2 newRight = {y, -x};
     newRight = v2_add(&newP, &newRight);
 
     // get the length of newRight - prevRight and newLeft - prevLeft
     // if lengthL < lengthR then this is a CCW rotation
     // if they are equal then use the previous rotation direction
     bool ccw = previous_rotation_ccw;
-    struct PointerVector left_delta = v2_sub(&newLeft, &previous_pnormal_left);
-    struct PointerVector right_delta = v2_sub(&newRight, &previous_pnormal_right);
-    float left_length = get_v2_length(left_delta.x, left_delta.y);
-    float right_length = get_v2_length(right_delta.x, right_delta.y);
+    struct Vec2 left_delta = v2_sub(&newLeft, &previous_pnormal_left);
+    struct Vec2 right_delta = v2_sub(&newRight, &previous_pnormal_right);
+    float left_length = v2_length(&left_delta);
+    float right_length = v2_length(&right_delta);
     if (left_length < right_length) {
         ccw = true;
     } else if (left_length > right_length) {
         ccw = false;
     }
 
-    float cos_theta = abs(get_cos_theta(&previous_pvector, &newP));
+    // float cos_theta = abs(v2_cos_theta(&previous_pvector, &newP));
 
     previous_rotation_ccw = ccw;
     previous_pvector = newP;
@@ -293,9 +302,9 @@ bool process_record_kb(uint16_t keycode, keyrecord_t* record) {
     if (keycode == TAB_FLIP) {
         if (record->event.pressed) {
             previous_rotation_ccw = true;
-            previous_pvector = (struct PointerVector){0.f, 0.f};
-            previous_pnormal_left = (struct PointerVector){0.f, 0.f};
-            previous_pnormal_right = (struct PointerVector){0.f, 0.f};
+            previous_pvector = (struct Vec2){0.f, 0.f};
+            previous_pnormal_left = (struct Vec2){0.f, 0.f};
+            previous_pnormal_right = (struct Vec2){0.f, 0.f};
             is_tab_flip = true;
         }
     }
