@@ -20,6 +20,8 @@
 #include "analog.h"
 #include "opt_encoder.h"
 
+#include <math.h>
+
 // for legacy support
 #if defined(OPT_DEBOUNCE) && !defined(PLOOPY_SCROLL_DEBOUNCE)
 #    define PLOOPY_SCROLL_DEBOUNCE OPT_DEBOUNCE
@@ -61,6 +63,38 @@
 #ifndef ENCODER_BUTTON_COL
 #    define ENCODER_BUTTON_COL 0
 #endif
+
+struct PointerVector {
+   float x;
+   float y;
+};
+struct PointerVector previous_pvector = {0.f, 0.f};
+struct PointerVector previous_pnormal_left = {0.f, 0.f};
+struct PointerVector previous_pnormal_right = {0.f, 0.f};
+bool previous_rotation_ccw = true;
+float get_v2_length(float x, float y) {
+    return sqrt(x*x + y*y);
+}
+struct PointerVector get_normalized_v2(struct PointerVector* p) {
+    if (p == NULL) {
+        return (struct PointerVector){0.f, 0.f};
+    }
+
+    float l = get_v2_length(p->x, p->y);
+    return (struct PointerVector){p->x / l, p->y / l};
+}
+float get_cos_theta(struct PointerVector* l, struct PointerVector* r) {
+    struct PointerVector nl = get_normalized_v2(l);
+    struct PointerVector nr = get_normalized_v2(r);
+
+    return nl.x * nr.x + nl.y * nr.y;
+}
+struct PointerVector v2_add(struct PointerVector*l, struct PointerVector* r) {
+    return (struct PointerVector){l->x + r->x, l->y + r->y};
+}
+struct PointerVector v2_sub(struct PointerVector*l, struct PointerVector* r) {
+    return (struct PointerVector){l->x - r->x, l->y - r->y};
+}
 
 keyboard_config_t keyboard_config;
 uint16_t          dpi_array[] = PLOOPY_DPI_OPTIONS;
@@ -146,6 +180,42 @@ void cycle_dpi(void) {
     pointing_device_set_cpi(dpi_array[keyboard_config.dpi_config]);
 }
 
+float get_pointer_rotation(int8_t x, int8_t y) {
+    float result = 0.f;
+
+    struct PointerVector newP = {(float)x, (float)y};
+    newP = v2_add(&newP, &previous_pvector);
+    // struct PointerVector newLeft = {-newP.y, newP.x};
+    // struct PointerVector newRight = {newP.y, -newP.x};
+    struct PointerVector newLeft = {-y, x};
+    newLeft = v2_add(&newP, &newLeft);
+    struct PointerVector newRight = {y, -x};
+    newRight = v2_add(&newP, &newRight);
+
+    // get the length of newRight - prevRight and newLeft - prevLeft
+    // if lengthL < lengthR then this is a CCW rotation
+    // if they are equal then use the previous rotation direction
+    bool ccw = previous_rotation_ccw;
+    struct PointerVector left_delta = v2_sub(&newLeft, &previous_pnormal_left);
+    struct PointerVector right_delta = v2_sub(&newRight, &previous_pnormal_right);
+    float left_length = get_v2_length(left_delta.x, left_delta.y);
+    float right_length = get_v2_length(right_delta.x, right_delta.y);
+    if (left_length < right_length) {
+        ccw = true;
+    } else if (left_length > right_length) {
+        ccw = false;
+    }
+
+    float cos_theta = abs(get_cos_theta(&previous_pvector, &newP));
+
+    previous_rotation_ccw = ccw;
+    previous_pvector = newP;
+    previous_pnormal_left = newLeft;
+    previous_pnormal_right = newRight;
+
+    return result;
+}
+
 report_mouse_t pointing_device_task_kb(report_mouse_t mouse_report) {
     mouse_report = pointing_device_task_user(mouse_report);
     if (is_drag_scroll) {
@@ -168,7 +238,7 @@ report_mouse_t pointing_device_task_kb(report_mouse_t mouse_report) {
         mouse_report.x = 0;
         mouse_report.y = 0;
     } else if (is_tab_flip) {
-        flip_accumulated += (float)mouse_report.x / 12.f;
+        flip_accumulated += get_pointer_rotation(mouse_report.x, mouse_report.y);
 
         mouse_report.x = 0;
         mouse_report.y = 0;
@@ -221,7 +291,13 @@ bool process_record_kb(uint16_t keycode, keyrecord_t* record) {
     }
 
     if (keycode == TAB_FLIP) {
-        is_tab_flip = record->event.pressed;
+        if (record->event.pressed) {
+            previous_rotation_ccw = true;
+            previous_pvector = (struct PointerVector){0.f, 0.f};
+            previous_pnormal_left = (struct PointerVector){0.f, 0.f};
+            previous_pnormal_right = (struct PointerVector){0.f, 0.f};
+            is_tab_flip = true;
+        }
     }
 
     return true;
