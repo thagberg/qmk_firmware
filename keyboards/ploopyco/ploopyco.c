@@ -19,6 +19,7 @@
 #include "ploopyco.h"
 #include "analog.h"
 #include "opt_encoder.h"
+#include "vec2.h"
 
 #include <math.h>
 
@@ -64,51 +65,77 @@
 #    define ENCODER_BUTTON_COL 0
 #endif
 
-struct Vec2 {
-   float x;
-   float y;
-};
-struct Vec2 previous_pvector = {0.f, 0.f};
-struct Vec2 previous_pnormal_left = {0.f, 0.f};
-struct Vec2 previous_pnormal_right = {0.f, 0.f};
-bool previous_rotation_ccw = true;
-float v2_length(struct Vec2* v) {
-    return sqrtf(v->x*v->x + v->y*v->y);
-}
-struct Vec2 v2_scalar_div(struct Vec2* v, float s) {
-    return (struct Vec2){v->x / s, v->y / s};
-}
-struct Vec2 v2_scalar_mul(struct Vec2* v, float s) {
-    return (struct Vec2){v->x * s, v->y * s};
-}
-struct Vec2 v2_normalize(struct Vec2* p) {
-    if (p == NULL) {
-        return (struct Vec2){0.f, 0.f};
-    }
-
-    float l = v2_length(p);
-    return v2_scalar_div(p, l);
-}
-float v2_dot(struct Vec2* l, struct Vec2* r) {
-    return l->x * r-> x + l->y * r->y;
-}
-struct Vec2 v2_add(struct Vec2*l, struct Vec2* r) {
-    return (struct Vec2){l->x + r->x, l->y + r->y};
-}
-struct Vec2 v2_sub(struct Vec2*l, struct Vec2* r) {
-    return (struct Vec2){l->x - r->x, l->y - r->y};
-}
-float v2_cos_theta(struct Vec2* l, struct Vec2* r) {
-    struct Vec2 nl = v2_normalize(l);
-    struct Vec2 nr = v2_normalize(r);
-
-    return v2_dot(&nl, &nr);
-}
-
 keyboard_config_t keyboard_config;
 uint16_t          dpi_array[] = PLOOPY_DPI_OPTIONS;
 #define DPI_OPTION_SIZE ARRAY_SIZE(dpi_array)
 uint16_t          dpi_hold    = PLOOPY_DPI_HOLD_VALUE;
+
+#define MAX_CACHED_DELTAS 5
+struct DeltaNode {
+    struct Vec2 delta;
+    struct DeltaNode* prev;
+};
+struct DeltaLinkedList {
+    struct DeltaNode deltas[MAX_CACHED_DELTAS];
+    uint8_t cache_index;
+    uint8_t num_cached;
+};
+
+void ll_add_delta(struct DeltaLinkedList* ll, struct Vec2 delta) {
+    struct DeltaNode* head = &ll->deltas[ll->cache_index];
+    uint8_t new_index = ll->cache_index + 1;
+    if (ll->num_cached == 0) {
+        head = NULL;
+        new_index = 0;
+    } else if (ll->cache_index == MAX_CACHED_DELTAS-1) {
+        new_index = 0;
+    }
+
+    struct DeltaNode* new_node = &ll->deltas[new_index];
+    new_node->delta = delta;
+    new_node->prev = head;
+    ll->cache_index = new_index;
+    ll->num_cached++;
+    if (ll->num_cached > MAX_CACHED_DELTAS) {
+        ll->num_cached = MAX_CACHED_DELTAS;
+    }
+}
+
+struct Vec2 ll_sum(struct DeltaLinkedList* ll) {
+    struct Vec2 sum = {0.f, 0.f};
+    struct DeltaNode*  head = &ll->deltas[ll->cache_index];
+    do {
+        sum = v2_add(&sum, &head->delta);
+        head = head->prev;
+    } while (head->prev != NULL);
+
+    return sum;
+}
+
+bool ll_is_ccw_rotation(struct DeltaLinkedList* ll) {
+    struct Vec2 head_vec;
+    struct Vec2 tail_vec;
+
+    if (ll->num_cached < 2) {
+        return false;
+    }
+
+    struct DeltaNode*  head = &ll->deltas[ll->cache_index];
+    struct DeltaNode* tail = head->prev;
+    while (tail->prev != NULL) {
+        tail = tail->prev;
+    }
+
+    return false;
+}
+
+void ll_clear(struct DeltaLinkedList* ll) {
+    ll->cache_index = 0;
+    ll->num_cached = 0;
+    ll->deltas[0] = (struct DeltaNode){(struct Vec2){0.f, 0.f}, NULL};
+}
+
+struct DeltaLinkedList cached_deltas;
 
 // Trackball State
 bool  is_scroll_clicked    = false;
@@ -118,6 +145,7 @@ float scroll_accumulated_v = 0;
 bool  is_dpi_held          = false;
 float flip_accumulated     = 0;
 bool  is_tab_flip          = false;
+bool previous_rotation_ccw = true;
 
 #ifdef ENCODER_ENABLE
 uint16_t lastScroll        = 0; // Previous confirmed wheel event
@@ -190,6 +218,21 @@ void cycle_dpi(void) {
 }
 
 float get_pointer_rotation(int8_t x, int8_t y) {
+    float result = 0.f;
+
+    // add cached pointer deltas (and latest)
+    ll_add_delta(&cached_deltas, (struct Vec2){(float)x, (float)y});
+    // only do the expensive stuff if we have enough cached deltas to calculate rotation
+    if (cached_deltas.num_cached >= MAX_CACHED_DELTAS) {
+        struct Vec2 delta_sum = ll_sum(&cached_deltas);
+        // the length of the sum vector will be the width of our arc approximation
+        float w = v2_length(&delta_sum);
+    }
+
+    return result;
+}
+
+float get_pointer_rotation_old(int8_t x, int8_t y) {
     float result = 0.f;
 
     struct Vec2 newP = {(float)x, (float)y};
@@ -301,6 +344,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t* record) {
 
     if (keycode == TAB_FLIP) {
         if (record->event.pressed) {
+            ll_clear(&cached_deltas);
             previous_rotation_ccw = true;
             previous_pvector = (struct Vec2){0.f, 0.f};
             previous_pnormal_left = (struct Vec2){0.f, 0.f};
