@@ -113,18 +113,23 @@ struct Vec2 ll_sum(struct DeltaLinkedList* ll) {
 }
 
 bool ll_is_ccw_rotation(struct DeltaLinkedList* ll) {
-    struct Vec2 head_vec;
-    struct Vec2 tail_vec;
+    // struct Vec2 head_vec;
+    // struct Vec2 tail_vec;
 
-    if (ll->num_cached < 2) {
+    // if (ll->num_cached < 2) {
+    if (ll->num_cached < MAX_CACHED_DELTAS) {
         return false;
     }
 
-    struct DeltaNode*  head = &ll->deltas[ll->cache_index];
-    struct DeltaNode* tail = head->prev;
-    while (tail->prev != NULL) {
-        tail = tail->prev;
-    }
+    // struct DeltaNode* head = &ll->deltas[ll->cache_index];
+    // struct Vec2 end_point = ll_sum(ll);
+    // struct Vec2 end_point = head->delta;
+    // walk back through the cached nodes until we get to the start
+    // struct DeltaNode* tail = head->prev;
+    // while (tail->prev != NULL) {
+    //     end_point = v2_add(&end_point, &tail->delta);
+    //     tail = tail->prev;
+    // }
 
     return false;
 }
@@ -224,9 +229,43 @@ float get_pointer_rotation(int8_t x, int8_t y) {
     ll_add_delta(&cached_deltas, (struct Vec2){(float)x, (float)y});
     // only do the expensive stuff if we have enough cached deltas to calculate rotation
     if (cached_deltas.num_cached >= MAX_CACHED_DELTAS) {
-        struct Vec2 delta_sum = ll_sum(&cached_deltas);
-        // the length of the sum vector will be the width of our arc approximation
-        float w = v2_length(&delta_sum);
+        struct DeltaNode* head = &cached_deltas.deltas[cached_deltas.cache_index];
+        struct Vec2 end_point = ll_sum(&cached_deltas);
+
+        // We could get _an_ angle between the start and end points using atan2f(cross, dot),
+        // but this would be with the origin at 0,0 and would not reflect the real radius of the arc
+        // being drawn with the pointer rotation.
+        // Instead we can use the cross product to find the direction of rotation, then
+        // find the width and height of the arc being traced to find the radius
+
+        const float cross = v2_cross(&head->delta, &end_point);
+        const bool is_ccw = cross >= 0.f;
+
+        const float w = v2_length(&end_point);
+        struct Vec2 n = v2_normalize(&end_point);
+        {
+            float t = n.x;
+            n.x = -n.y;
+            n.y = t;
+        }
+
+        // To find the height of the arc, we need to traverse the cached deltas and
+        // project every interior point of the arc onto the normal of (end - start)
+        // This magnitude of the projection should be a decent approximation of arc height
+        // (we can actually consider start as (0,0) since end_point is just deltas)
+        uint8_t i = 0;
+        struct Vec2 interior_point = end_point;
+        while(head->prev != NULL) {
+            if (i > 0 && i < MAX_CACHED_DELTAS) {
+                struct Vec2 interior_n
+                float cos_theta = v2_dot(&interior_point, &n);
+            }
+            // Actually, the interior point needs to be this calculated point minux the halfway point
+            // between start and end
+            interior_point = v2_sub(&interior_point, &head->delta);
+            head = head->prev;
+            ++i;
+        }
     }
 
     return result;

@@ -33,6 +33,9 @@ struct Vec2 v2_normalize(struct Vec2* p) {
 float v2_dot(struct Vec2* l, struct Vec2* r) {
     return l->x * r-> x + l->y * r->y;
 }
+ float v2_cross(struct Vec2* l, struct Vec2* r) {
+     return (l->x * r->y) - (l->y * r->x);
+ }
 
 struct Vec2 v2_add(struct Vec2*l, struct Vec2* r) {
     return (struct Vec2){l->x + r->x, l->y + r->y};
@@ -54,5 +57,9 @@ float v2_project(struct Vec2* v, struct Vec2* n) {
     // it should definitely be optimized
     float cos_theta = v2_cos_theta(v, n);
     return cos_theta * v2_length(v);
+}
+
+float v2_angle(struct Vec2* a, struct Vec2* b) {
+    return atan2f(v2_cross(a, b), v2_dot(a, b));
 }
 
