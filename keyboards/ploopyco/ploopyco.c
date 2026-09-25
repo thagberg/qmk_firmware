@@ -22,6 +22,7 @@
 #include "vec2.h"
 
 #include <math.h>
+#include <stdlib.h>
 
 // for legacy support
 #if defined(OPT_DEBOUNCE) && !defined(PLOOPY_SCROLL_DEBOUNCE)
@@ -101,9 +102,14 @@ void ll_add_delta(struct DeltaLinkedList* ll, struct Vec2 delta) {
     }
 }
 
-struct Vec2 ll_sum(struct DeltaLinkedList* ll) {
+struct Vec2 ll_sum(struct DeltaLinkedList* ll, struct DeltaNode* start) {
     struct Vec2 sum = {0.f, 0.f};
-    struct DeltaNode*  head = &ll->deltas[ll->cache_index];
+    struct DeltaNode* head = NULL;
+    if (start != NULL) {
+        head = start;
+    } else {
+        head = &ll->deltas[ll->cache_index];
+    }
     do {
         sum = v2_add(&sum, &head->delta);
         head = head->prev;
@@ -230,20 +236,24 @@ float get_pointer_rotation(int8_t x, int8_t y) {
     // only do the expensive stuff if we have enough cached deltas to calculate rotation
     if (cached_deltas.num_cached >= MAX_CACHED_DELTAS) {
         struct DeltaNode* head = &cached_deltas.deltas[cached_deltas.cache_index];
-        struct Vec2 end_point = ll_sum(&cached_deltas);
+        struct Vec2 end_point = ll_sum(&cached_deltas, NULL);
 
         // We could get _an_ angle between the start and end points using atan2f(cross, dot),
         // but this would be with the origin at 0,0 and would not reflect the real radius of the arc
         // being drawn with the pointer rotation.
         // Instead we can use the cross product to find the direction of rotation, then
         // find the width and height of the arc being traced to find the radius
+        //
+        // I think the cross product really only checks that it's more than 180 degrees
+        // so technically a very fast rotation could trigger the wrong direction?
 
-        const float cross = v2_cross(&head->delta, &end_point);
-        const bool is_ccw = cross >= 0.f;
+        // const float cross = v2_cross(&head->delta, &end_point);
+        // const bool is_ccw = cross >= 0.f;
 
         const float w = v2_length(&end_point);
         struct Vec2 n = v2_normalize(&end_point);
         {
+            // get the perpendicular vector
             float t = n.x;
             n.x = -n.y;
             n.y = t;
@@ -253,19 +263,24 @@ float get_pointer_rotation(int8_t x, int8_t y) {
         // project every interior point of the arc onto the normal of (end - start)
         // This magnitude of the projection should be a decent approximation of arc height
         // (we can actually consider start as (0,0) since end_point is just deltas)
+        const struct Vec2 mid_point = v2_scalar_mul(&end_point, 2.f);
         uint8_t i = 0;
+        float height = 0.f;
         struct Vec2 interior_point = end_point;
         while(head->prev != NULL) {
             if (i > 0 && i < MAX_CACHED_DELTAS) {
-                struct Vec2 interior_n
-                float cos_theta = v2_dot(&interior_point, &n);
+                const struct Vec2 interior_adjusted = v2_sub(&end_point, &mid_point);
+                struct Vec2 interior_n = v2_normalize(&interior_adjusted);
+                float cos_theta = v2_dot(&interior_n, &n);
+                height = fmax(height, cos_theta * v2_length(&interior_adjusted));
             }
-            // Actually, the interior point needs to be this calculated point minux the halfway point
-            // between start and end
             interior_point = v2_sub(&interior_point, &head->delta);
             head = head->prev;
             ++i;
         }
+
+        // r = (H^2 + (W/2)^2) / 2H
+        float radius = (powf(height, 2.f) + powf(w / 2.f, 2.f)) / (2.f * height);
     }
 
     return result;
