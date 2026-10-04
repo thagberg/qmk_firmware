@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "debug.h"
 #define PLOOPY_DRAGSCROLL_MOMENTARY 1
 #define PLOOPY_DRAGSCROLL_DIVISOR_H 24.0
 #define PLOOPY_DRAGSCROLL_DIVISOR_V 24.0
@@ -34,5 +35,9 @@
 
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     // [0] = LAYOUT( MS_BTN4, MS_BTN5, DRAG_SCROLL, MS_BTN2, MS_BTN1, MS_BTN3 )
-    [0] = LAYOUT( DRAG_SCROLL, MS_BTN4, MS_BTN5, MS_BTN2, DPI_HOLD, MS_BTN1 )
+    [0] = LAYOUT( DRAG_SCROLL, ROT_SCROLL, MS_BTN5, MS_BTN2, DPI_HOLD, MS_BTN1 )
 };
+
+void keyboard_post_init_user(void) {
+    debug_enable = true;
+}

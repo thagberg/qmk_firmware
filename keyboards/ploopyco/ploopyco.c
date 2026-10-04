@@ -90,7 +90,7 @@ void ll_add_delta(struct DeltaLinkedList* ll, struct Vec2 delta) {
     if (ll->num_cached == 0) {
         head = NULL;
         new_index = 0;
-    } else if (ll->cache_index == MAX_CACHED_DELTAS-1) {
+    } else if (ll->cache_index == MAX_CACHED_DELTAS) {
         new_index = 0;
     }
 
@@ -159,6 +159,7 @@ bool  is_dpi_held          = false;
 float flip_accumulated     = 0;
 bool  is_tab_flip          = false;
 bool previous_rotation_ccw = true;
+bool  is_rot_scroll        = false;
 
 #ifdef ENCODER_ENABLE
 uint16_t lastScroll        = 0; // Previous confirmed wheel event
@@ -234,12 +235,15 @@ float get_pointer_rotation(int8_t x, int8_t y) {
     float result = 0.f;
 
     // add cached pointer deltas (and latest)
+    uprintf("Adding new pointer delta: (%f, %f)\n", (float)x, (float)y);
     ll_add_delta(&cached_deltas, (struct Vec2){(float)x, (float)y});
     // only do the expensive stuff if we have enough cached deltas to calculate rotation
     if (cached_deltas.num_cached >= MAX_CACHED_DELTAS) {
+        uprintf("Enough deltas to calculate rotation\n");
         struct DeltaNode* head = &cached_deltas.deltas[cached_deltas.cache_index];
         struct Vec2 end_point = ll_sum(&cached_deltas, NULL);
 
+        uprintf("Rotation end point: (%f, %f)\n", end_point.x, end_point.y);
         // We could get _an_ angle between the start and end points using atan2f(cross, dot),
         // but this would be with the origin at 0,0 and would not reflect the real radius of the arc
         // being drawn with the pointer rotation.
@@ -253,7 +257,9 @@ float get_pointer_rotation(int8_t x, int8_t y) {
         // const bool is_ccw = cross >= 0.f;
 
         const float w = v2_length(&end_point);
+        uprintf("W: %f\n", w);
         struct Vec2 n = v2_normalize(&end_point);
+        uprintf("N: (%f, %f)\n", n.x, n.y);
         {
             // get the perpendicular vector
             float t = n.x;
@@ -270,11 +276,12 @@ float get_pointer_rotation(int8_t x, int8_t y) {
         // This magnitude of the projection should be a decent approximation of arc height
         // (we can actually consider start as (0,0) since end_point is just deltas)
         const struct Vec2 mid_point = v2_scalar_mul(&end_point, 2.f);
+        uprintf("Mid-point: (%f, %f)\n", mid_point.x, mid_point.y);
         uint8_t i = 0;
         float height = 0.f;
         struct Vec2 interior_point = end_point;
         while(head->prev != NULL) {
-            if (i > 0 && i < MAX_CACHED_DELTAS) {
+            if (i > 0 && i <= MAX_CACHED_DELTAS) {
                 const struct Vec2 interior_adjusted = v2_sub(&end_point, &mid_point);
                 // struct Vec2 interior_n = v2_normalize(&interior_adjusted);
                 // float cos_theta = v2_dot(&interior_n, &n);
@@ -293,7 +300,7 @@ float get_pointer_rotation(int8_t x, int8_t y) {
         //float radius = (powf(height, 2.f) + powf(w / 2.f, 2.f)) / (2.f * height);
         if (height > 0.f) {
             float radius = (height / 2.f) + (powf(w, 2.f) / (height * 8.f));
-            uprintf("Radius: %s\n", radius);
+            uprintf("Radius: %f\n", radius);
             if (radius > 0.f) {
                 result = 2 * acos((radius - height) / radius) * (is_ccw ? -1.f : 1.f);
                 uprintf("Angle of rotation: %f\n", result);
@@ -303,45 +310,7 @@ float get_pointer_rotation(int8_t x, int8_t y) {
         } else {
             uprintf("Something wrong: height zero\n");
         }
-
-        // now find the origin of the circle which the arc superimposes
     }
-
-    return result;
-}
-
-float get_pointer_rotation_old(int8_t x, int8_t y) {
-    float result = 0.f;
-
-    struct Vec2 newP = {(float)x, (float)y};
-    newP = v2_add(&newP, &previous_pvector);
-    // struct PointerVector newLeft = {-newP.y, newP.x};
-    // struct PointerVector newRight = {newP.y, -newP.x};
-    struct Vec2 newLeft = {-y, x};
-    newLeft = v2_add(&newP, &newLeft);
-    struct Vec2 newRight = {y, -x};
-    newRight = v2_add(&newP, &newRight);
-
-    // get the length of newRight - prevRight and newLeft - prevLeft
-    // if lengthL < lengthR then this is a CCW rotation
-    // if they are equal then use the previous rotation direction
-    bool ccw = previous_rotation_ccw;
-    struct Vec2 left_delta = v2_sub(&newLeft, &previous_pnormal_left);
-    struct Vec2 right_delta = v2_sub(&newRight, &previous_pnormal_right);
-    float left_length = v2_length(&left_delta);
-    float right_length = v2_length(&right_delta);
-    if (left_length < right_length) {
-        ccw = true;
-    } else if (left_length > right_length) {
-        ccw = false;
-    }
-
-    // float cos_theta = abs(v2_cos_theta(&previous_pvector, &newP));
-
-    previous_rotation_ccw = ccw;
-    previous_pvector = newP;
-    previous_pnormal_left = newLeft;
-    previous_pnormal_right = newRight;
 
     return result;
 }
@@ -369,6 +338,13 @@ report_mouse_t pointing_device_task_kb(report_mouse_t mouse_report) {
         mouse_report.y = 0;
     } else if (is_tab_flip) {
         flip_accumulated += get_pointer_rotation(mouse_report.x, mouse_report.y);
+
+        mouse_report.x = 0;
+        mouse_report.y = 0;
+    } else if (is_rot_scroll) {
+        uprintf("Rotation scroll sampling\n");
+        scroll_accumulated_v += get_pointer_rotation(mouse_report.x, mouse_report.y);
+        uprintf("Accumulated rotation: %f\n", scroll_accumulated_v);
 
         mouse_report.x = 0;
         mouse_report.y = 0;
@@ -428,6 +404,22 @@ bool process_record_kb(uint16_t keycode, keyrecord_t* record) {
             previous_pnormal_left = (struct Vec2){0.f, 0.f};
             previous_pnormal_right = (struct Vec2){0.f, 0.f};
             is_tab_flip = true;
+        } else {
+            ll_clear(&cached_deltas);
+            is_tab_flip = false;
+        }
+    }
+
+    if (keycode == ROT_SCROLL) {
+        if (record->event.pressed) {
+            ll_clear(&cached_deltas);
+            previous_pvector = (struct Vec2){0.f, 0.f};
+            previous_pnormal_left = (struct Vec2){0.f, 0.f};
+            previous_pnormal_right = (struct Vec2){0.f, 0.f};
+            is_rot_scroll = true;
+        } else {
+            is_rot_scroll = false;
+            ll_clear(&cached_deltas);
         }
     }
 
