@@ -24,6 +24,8 @@
 #include <math.h>
 #include <stdlib.h>
 
+#include "print.h"
+
 // for legacy support
 #if defined(OPT_DEBOUNCE) && !defined(PLOOPY_SCROLL_DEBOUNCE)
 #    define PLOOPY_SCROLL_DEBOUNCE OPT_DEBOUNCE
@@ -259,6 +261,10 @@ float get_pointer_rotation(int8_t x, int8_t y) {
             n.y = t;
         }
 
+        // use cross product of first and last position to get the rotation direction
+        bool is_ccw = v2_cross(&head->delta, &end_point) >= 0.f;
+        uprintf("Rotation counter-clockwise: %d\n", is_ccw);
+
         // To find the height of the arc, we need to traverse the cached deltas and
         // project every interior point of the arc onto the normal of (end - start)
         // This magnitude of the projection should be a decent approximation of arc height
@@ -270,17 +276,35 @@ float get_pointer_rotation(int8_t x, int8_t y) {
         while(head->prev != NULL) {
             if (i > 0 && i < MAX_CACHED_DELTAS) {
                 const struct Vec2 interior_adjusted = v2_sub(&end_point, &mid_point);
-                struct Vec2 interior_n = v2_normalize(&interior_adjusted);
-                float cos_theta = v2_dot(&interior_n, &n);
-                height = fmax(height, cos_theta * v2_length(&interior_adjusted));
+                // struct Vec2 interior_n = v2_normalize(&interior_adjusted);
+                // float cos_theta = v2_dot(&interior_n, &n);
+                float cos_theta = v2_dot(&interior_adjusted, &n);
+                // height = fmax(height, cos_theta * v2_length(&interior_adjusted));
+                uprintf("Height %d: %f\n", i, cos_theta);
+                height = fmax(height, cos_theta);
             }
             interior_point = v2_sub(&interior_point, &head->delta);
             head = head->prev;
             ++i;
         }
+        uprintf("Max height: %f\n", height);
 
         // r = (H^2 + (W/2)^2) / 2H
-        float radius = (powf(height, 2.f) + powf(w / 2.f, 2.f)) / (2.f * height);
+        //float radius = (powf(height, 2.f) + powf(w / 2.f, 2.f)) / (2.f * height);
+        if (height > 0.f) {
+            float radius = (height / 2.f) + (powf(w, 2.f) / (height * 8.f));
+            uprintf("Radius: %s\n", radius);
+            if (radius > 0.f) {
+                result = 2 * acos((radius - height) / radius) * (is_ccw ? -1.f : 1.f);
+                uprintf("Angle of rotation: %f\n", result);
+            } else {
+                uprintf("Something wrong: radius zero %f\n", radius);
+            }
+        } else {
+            uprintf("Something wrong: height zero\n");
+        }
+
+        // now find the origin of the circle which the arc superimposes
     }
 
     return result;
